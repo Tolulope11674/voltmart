@@ -1,0 +1,738 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>VoltMart | Electrical Store</title>
+
+    <!-- Main CSS -->
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+<!-- =====================================================
+     NAVIGATION
+===================================================== -->
+
+<header class="site-header">
+    <nav class="navbar">
+
+        <a href="{{ url_for('home') }}" class="logo">
+            ⚡ <span>VoltMart</span>
+        </a>
+
+        <div class="nav-links">
+
+            <a href="{{ url_for('home') }}">Home</a>
+
+            <a href="{{ url_for('products') }}">Products</a>
+
+            <a href="{{ url_for('products', category='Lighting') }}">
+                Lighting
+            </a>
+
+            <a href="{{ url_for('cart') }}">
+                🛒 Cart
+            </a>
+
+            {% if session.get("user_id") %}
+
+                <span class="welcome">
+                    Hi, {{ session.get("user_name") }}
+                </span>
+
+                <a href="{{ url_for('logout') }}">
+                    Logout
+                </a>
+
+            {% else %}
+
+                <a href="{{ url_for('login') }}">
+                    Login
+                </a>
+
+                <a href="{{ url_for('register') }}" class="nav-button">
+                    Register
+                </a>
+
+            {% endif %}
+
+        </div>
+
+        <button class="menu-button"
+                onclick="toggleMenu()"
+                aria-label="Open navigation menu">
+            ☰
+        </button>
+
+    </nav>
+</header>
+
+
+<!-- =====================================================
+     FLASH MESSAGES
+===================================================== -->
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+
+    {% if messages %}
+
+        <div class="messages">
+
+            {% for category, message in messages %}
+
+                <div class="message {{ category }}">
+                    {{ message }}
+                </div>
+
+            {% endfor %}
+
+        </div>
+
+    {% endif %}
+
+{% endwith %}
+
+
+<!-- =====================================================
+     HERO SECTION
+===================================================== -->
+
+<section class="hero">
+
+    <div class="hero-content">
+
+        <p class="eyebrow">
+            ⚡ QUALITY ELECTRICAL PRODUCTS
+        </p>
+
+        <h1>
+            Power Your Home
+            <span>With Confidence.</span>
+        </h1>
+
+        <p class="hero-text">
+            Shop reliable electrical products, modern lighting,
+            switches, protection equipment and accessories
+            at affordable prices.
+        </p>
+
+        <div class="hero-buttons">
+
+            <a href="{{ url_for('products') }}"
+               class="primary-button">
+                Shop Products →
+            </a>
+
+            <a href="#categories"
+               class="secondary-button">
+                Explore Categories
+            </a>
+
+        </div>
+
+    </div>
+
+    <div class="hero-visual">
+
+        <div class="hero-circle">
+            ⚡
+        </div>
+
+        <div class="floating-card card-one">
+            💡
+            <span>Lighting</span>
+        </div>
+
+        <div class="floating-card card-two">
+            🔌
+            <span>Electrical</span>
+        </div>
+
+    </div>
+
+</section>
+
+
+<!-- =====================================================
+     CATEGORIES
+===================================================== -->
+
+<section class="section categories-section"
+         id="categories">
+
+    <div class="section-heading">
+
+        <p class="eyebrow">
+            SHOP BY CATEGORY
+        </p>
+
+        <h2>
+            Find What You Need
+        </h2>
+
+        <p>
+            Explore our range of reliable electrical products
+            for homes, offices and businesses.
+        </p>
+
+    </div>
+
+
+    <div class="categories">
+
+        <!-- Lighting -->
+
+        <a href="{{ url_for('products', category='Lighting') }}"
+           class="category-card">
+
+            <div class="category-icon">
+                💡
+            </div>
+
+            <div>
+                <p class="card-label">
+                    LIGHTING
+                </p>
+
+                <h3>
+                    Lighting
+                </h3>
+
+                <p>
+                    Bulbs, lamps and modern lighting
+                    solutions for every space.
+                </p>
+            </div>
+
+            <span class="card-arrow">
+                →
+            </span>
+
+        </a>
+
+
+        <!-- Switches -->
+
+        <a href="{{ url_for('products', category='Switches') }}"
+           class="category-card">
+
+            <div class="category-icon">
+                🔌
+            </div>
+
+            <div>
+                <p class="card-label">
+                    ELECTRICAL
+                </p>
+
+                <h3>
+                    Switches
+                </h3>
+
+                <p>
+                    Quality switches, sockets and
+                    electrical accessories.
+                </p>
+            </div>
+
+            <span class="card-arrow">
+                →
+            </span>
+
+        </a>
+
+
+        <!-- Protection -->
+
+        <a href="{{ url_for('products', category='Protection') }}"
+           class="category-card">
+
+            <div class="category-icon">
+                🛡️
+            </div>
+
+            <div>
+                <p class="card-label">
+                    SAFETY
+                </p>
+
+                <h3>
+                    Protection
+                </h3>
+
+                <p>
+                    Circuit breakers and equipment
+                    designed for electrical safety.
+                </p>
+            </div>
+
+            <span class="card-arrow">
+                →
+            </span>
+
+        </a>
+
+
+        <!-- Fans -->
+
+        <a href="{{ url_for('products', category='Fans') }}"
+           class="category-card">
+
+            <div class="category-icon">
+                🌀
+            </div>
+
+            <div>
+                <p class="card-label">
+                    COMFORT
+                </p>
+
+                <h3>
+                    Fans
+                </h3>
+
+                <p>
+                    Reliable fans for comfortable
+                    homes and offices.
+                </p>
+            </div>
+
+            <span class="card-arrow">
+                →
+            </span>
+
+        </a>
+
+    </div>
+
+</section>
+
+
+<!-- =====================================================
+     FEATURED PRODUCTS
+===================================================== -->
+
+<section class="section products-section"
+         id="products">
+
+    <div class="section-heading">
+
+        <p class="eyebrow">
+            OUR PRODUCTS
+        </p>
+
+        <h2>
+            Featured Products
+        </h2>
+
+        <p>
+            Quality electrical products selected
+            for your everyday needs.
+        </p>
+
+    </div>
+
+
+    <div class="product-grid">
+
+        {% if products %}
+
+            {% for product in products %}
+
+                <article class="product-card">
+
+                    <div class="product-image">
+
+                        <img src="{{ product['image'] }}"
+                             alt="{{ product['name'] }}"
+                             loading="lazy">
+
+                    </div>
+
+
+                    <div class="product-info">
+
+                        <span class="category">
+                            {{ product['category'] }}
+                        </span>
+
+                        <h3>
+                            {{ product['name'] }}
+                        </h3>
+
+                        <p>
+                            {{ product['description'] }}
+                        </p>
+
+
+                        <div class="product-bottom">
+
+                            <strong class="price">
+                                ₦{{ "{:,.0f}".format(product['price']) }}
+                            </strong>
+
+                            <a href="{{ url_for(
+                                'add_to_cart',
+                                product_id=product['id']
+                            ) }}"
+                               class="cart-button">
+
+                                Add to Cart
+
+                            </a>
+
+                        </div>
+
+                    </div>
+
+                </article>
+
+            {% endfor %}
+
+        {% else %}
+
+            <div class="empty-products">
+
+                <div>
+                    🛒
+                </div>
+
+                <h3>
+                    No products available yet
+                </h3>
+
+                <p>
+                    Products will appear here when they
+                    are added to the store.
+                </p>
+
+            </div>
+
+        {% endif %}
+
+    </div>
+
+
+    <div class="center">
+
+        <a href="{{ url_for('products') }}"
+           class="secondary-button">
+            View All Products →
+        </a>
+
+    </div>
+
+</section>
+
+
+<!-- =====================================================
+     ABOUT / WHY VOLTMART
+===================================================== -->
+
+<section class="about-section">
+
+    <div class="about-content">
+
+        <p class="eyebrow">
+            WHY CHOOSE VOLTMART?
+        </p>
+
+        <h2>
+            Electrical shopping
+            made simple.
+        </h2>
+
+        <p>
+            VoltMart makes it easier to find reliable
+            electrical products for your home, office
+            or business.
+        </p>
+
+        <p>
+            From lighting and switches to protection
+            equipment and fans, we bring useful
+            electrical products together in one place.
+        </p>
+
+        <a href="{{ url_for('products') }}"
+           class="primary-button">
+            Explore Our Products →
+        </a>
+
+    </div>
+
+
+    <div class="benefits">
+
+        <div class="benefit-card">
+
+            <div class="benefit-icon">
+                ✓
+            </div>
+
+            <div>
+
+                <h3>
+                    Quality Products
+                </h3>
+
+                <p>
+                    Products selected with quality
+                    and reliability in mind.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div class="benefit-card">
+
+            <div class="benefit-icon">
+                ₦
+            </div>
+
+            <div>
+
+                <h3>
+                    Affordable Prices
+                </h3>
+
+                <p>
+                    Competitive prices for your
+                    everyday electrical needs.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div class="benefit-card">
+
+            <div class="benefit-icon">
+                ⚡
+            </div>
+
+            <div>
+
+                <h3>
+                    Easy Shopping
+                </h3>
+
+                <p>
+                    Browse products and add them
+                    to your cart with ease.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div class="benefit-card">
+
+            <div class="benefit-icon">
+                🛒
+            </div>
+
+            <div>
+
+                <h3>
+                    Simple Ordering
+                </h3>
+
+                <p>
+                    A simple shopping experience
+                    from your phone or computer.
+                </p>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+<!-- =====================================================
+     CTA
+===================================================== -->
+
+<section class="cta-section">
+
+    <div>
+
+        <p class="eyebrow">
+            ⚡ POWER YOUR SPACE
+        </p>
+
+        <h2>
+            Find the electrical products
+            you need today.
+        </h2>
+
+        <p>
+            Shop quality products for your home,
+            office or business.
+        </p>
+
+        <a href="{{ url_for('products') }}"
+           class="primary-button">
+            Shop Products →
+        </a>
+
+    </div>
+
+</section>
+
+
+<!-- =====================================================
+     FOOTER
+===================================================== -->
+
+<footer class="footer">
+
+    <div class="footer-content">
+
+
+        <!-- Brand -->
+
+        <div class="footer-brand">
+
+            <a href="{{ url_for('home') }}"
+               class="footer-logo">
+
+                ⚡ VoltMart
+
+            </a>
+
+            <p>
+                Your trusted online electrical store.
+                Quality products for homes, offices
+                and businesses.
+            </p>
+
+        </div>
+
+
+        <!-- Navigation -->
+
+        <div class="footer-column">
+
+            <h3>
+                Navigation
+            </h3>
+
+            <a href="{{ url_for('home') }}">
+                Home
+            </a>
+
+            <a href="{{ url_for('products') }}">
+                Products
+            </a>
+
+            <a href="{{ url_for('cart') }}">
+                Cart
+            </a>
+
+            {% if session.get("user_id") %}
+
+                <a href="{{ url_for('logout') }}">
+                    Logout
+                </a>
+
+            {% else %}
+
+                <a href="{{ url_for('login') }}">
+                    Login
+                </a>
+
+                <a href="{{ url_for('register') }}">
+                    Register
+                </a>
+
+            {% endif %}
+
+        </div>
+
+
+        <!-- Categories -->
+
+        <div class="footer-column">
+
+            <h3>
+                Categories
+            </h3>
+
+            <a href="{{ url_for('products', category='Lighting') }}">
+                Lighting
+            </a>
+
+            <a href="{{ url_for('products', category='Switches') }}">
+                Switches
+            </a>
+
+            <a href="{{ url_for('products', category='Protection') }}">
+                Protection
+            </a>
+
+            <a href="{{ url_for('products', category='Fans') }}">
+                Fans
+            </a>
+
+        </div>
+
+
+        <!-- Contact -->
+
+        <div class="footer-column">
+
+            <h3>
+                Contact Us
+            </h3>
+
+            <p>
+                📧 support@voltmart.com
+            </p>
+
+            <p>
+                📞 +234 800 000 0000
+            </p>
+
+            <p>
+                📍 Nigeria
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="copyright">
+
+        <p>
+            © 2026 VoltMart. All rights reserved.
+        </p>
+
+    </div>
+
+</footer>
+
+
+<!-- =====================================================
+     JAVASCRIPT
+===================================================== -->
+
+<script src="{{ url_for('static', filename='js/script.js') }}">
+</script>
+
+</body>
+</html>
+```

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Products | VoltMart</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static',
+                           filename='css/style.css') }}">
+
+</head>
+
+<body>
+
+<nav class="navbar">
+
+    <a href="{{ url_for('home') }}" class="logo">
+        ⚡ VoltMart
+    </a>
+
+    <div class="nav-links">
+
+        <a href="{{ url_for('home') }}">Home</a>
+
+        <a href="{{ url_for('products') }}">Products</a>
+
+        <a href="{{ url_for('cart') }}">🛒 Cart</a>
+
+        {% if session.get("user_id") %}
+
+            <a href="{{ url_for('logout') }}">Logout</a>
+
+        {% else %}
+
+            <a href="{{ url_for('login') }}">Login</a>
+
+        {% endif %}
+
+    </div>
+
+</nav>
+
+
+<section class="page-header">
+
+    <p class="small-title">
+        VOLTMART STORE
+    </p>
+
+    <h1>
+        Electrical Products
+    </h1>
+
+    <p>
+        Find reliable products for your home and business.
+    </p>
+
+</section>
+
+
+<section class="section">
+
+    <div class="filter-buttons">
+
+        <a href="{{ url_for('products') }}"
+           class="filter-button">
+            All
+        </a>
+
+        <a href="{{ url_for('products',
+                            category='Lighting') }}"
+           class="filter-button">
+            Lighting
+        </a>
+
+        <a href="{{ url_for('products',
+                            category='Switches') }}"
+           class="filter-button">
+            Switches
+        </a>
+
+        <a href="{{ url_for('products',
+                            category='Protection') }}"
+           class="filter-button">
+            Protection
+        </a>
+
+        <a href="{{ url_for('products',
+                            category='Fans') }}"
+           class="filter-button">
+            Fans
+        </a>
+
+    </div>
+
+
+    <div class="product-grid">
+
+        {% for product in products %}
+
+        <div class="product-card">
+
+            <div class="product-image">
+
+                <img src="{{ product['image'] }}"
+                     alt="{{ product['name'] }}">
+
+            </div>
+
+            <div class="product-info">
+
+                <span class="category">
+                    {{ product['category'] }}
+                </span>
+
+                <h3>
+                    {{ product['name'] }}
+                </h3>
+
+                <p>
+                    {{ product['description'] }}
+                </p>
+
+                <div class="product-bottom">
+
+                    <strong>
+                        ₦{{ "{:,.0f}".format(product['price']) }}
+                    </strong>
+
+                    <a href="{{ url_for('add_to_cart',
+                                        product_id=product['id']) }}"
+                       class="cart-button">
+                        Add to Cart
+                    </a>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        {% else %}
+
+        <p>No products found.</p>
+
+        {% endfor %}
+
+    </div>
+
+</section>
+
+
+<script src="{{ url_for('static',
+                        filename='js/script.js') }}">
+</script>
+
+</body>
+</html>

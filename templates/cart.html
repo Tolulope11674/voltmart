@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>Your Cart | VoltMart</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static',
+                           filename='css/style.css') }}">
+
+</head>
+
+<body>
+
+<nav class="navbar">
+
+    <a href="{{ url_for('home') }}" class="logo">
+        ⚡ VoltMart
+    </a>
+
+    <div class="nav-links">
+
+        <a href="{{ url_for('home') }}">Home</a>
+
+        <a href="{{ url_for('products') }}">Products</a>
+
+        <a href="{{ url_for('cart') }}">🛒 Cart</a>
+
+    </div>
+
+</nav>
+
+
+<section class="page-header">
+
+    <h1>
+        Shopping Cart
+    </h1>
+
+    <p>
+        Review your selected products.
+    </p>
+
+</section>
+
+
+<section class="cart-section">
+
+    {% if products %}
+
+        {% for product in products %}
+
+        <div class="cart-item">
+
+            <img src="{{ product['image'] }}"
+                 alt="{{ product['name'] }}">
+
+            <div>
+
+                <h3>
+                    {{ product['name'] }}
+                </h3>
+
+                <p>
+                    {{ product['category'] }}
+                </p>
+
+                <strong>
+                    ₦{{ "{:,.0f}".format(product['price']) }}
+                </strong>
+
+            </div>
+
+            <a href="{{ url_for('remove_from_cart',
+                                product_id=product['id']) }}"
+               class="remove-button">
+                Remove
+            </a>
+
+        </div>
+
+        {% endfor %}
+
+
+        <div class="cart-total">
+
+            <h2>
+                Total:
+                ₦{{ "{:,.0f}".format(total) }}
+            </h2>
+
+            <form action="{{ url_for('checkout') }}"
+                  method="POST">
+
+                <button class="primary-button"
+                        type="submit">
+                    Place Order
+                </button>
+
+            </form>
+
+        </div>
+
+    {% else %}
+
+        <div class="empty-cart">
+
+            <div class="empty-icon">
+                🛒
+            </div>
+
+            <h2>
+                Your cart is empty
+            </h2>
+
+            <p>
+                Add some electrical products to get started.
+            </p>
+
+            <a href="{{ url_for('products') }}"
+               class="primary-button">
+                Shop Products
+            </a>
+
+        </div>
+
+    {% endif %}
+
+</section>
+
+</body>
+</html>
