@@ -1,11 +1,46 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+
+from flask import (
+    Flask, render_template, request, redirect,
+    url_for, session, flash, jsonify
+)
 import sqlite3
+import os
+from pathlib import Path
 from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
+from openai import OpenAI, AuthenticationError, RateLimitError, APIConnectionError
+
+# Load .env from the same folder as app.py
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
 app = Flask(__name__)
-app.secret_key = "voltMart-secret-key"
 
-DATABASE = "store.db"
+@app.context_processor
+def cart_count():
+    cart = session.get("cart", [])
+    return {"cart_count": len(cart)}
+
+app.secret_key = os.getenv(
+    "FLASK_SECRET_KEY",
+    "dev-only-change-this-key"
+)
+
+DATABASE = str(BASE_DIR / "store.db")
+
+# Create the AI client only when a key is configured
+api_key = os.getenv("OPENAI_API_KEY", "").strip()
+
+client = OpenAI(api_key=api_key) if api_key else None
+
+# -------------------------
+# AI CLIENT
+# -------------------------
+client = (
+    OpenAI()
+    if os.getenv("OPENAI_API_KEY")
+    else None
+)
 
 
 # -------------------------
@@ -15,6 +50,7 @@ def get_db():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
+
 
 # -------------------------
 # CREATE DATABASE
@@ -119,9 +155,11 @@ def init_db():
 @app.route("/")
 def home():
     conn = get_db()
+
     products = conn.execute(
         "SELECT * FROM products LIMIT 6"
     ).fetchall()
+
     conn.close()
 
     return render_template("index.html", products=products)
@@ -160,9 +198,7 @@ def products():
 # -------------------------
 @app.route("/register", methods=["GET", "POST"])
 def register():
-
     if request.method == "POST":
-
         name = request.form["name"]
         email = request.form["email"]
         password = request.form["password"]
@@ -179,7 +215,10 @@ def register():
 
             conn.commit()
 
-            flash("Account created successfully. You can now login.", "success")
+            flash(
+                "Account created successfully. You can now login.",
+                "success"
+            )
 
             return redirect(url_for("login"))
 
@@ -197,9 +236,7 @@ def register():
 # -------------------------
 @app.route("/login", methods=["GET", "POST"])
 def login():
-
     if request.method == "POST":
-
         email = request.form["email"]
         password = request.form["password"]
 
@@ -213,7 +250,6 @@ def login():
         conn.close()
 
         if user and check_password_hash(user["password"], password):
-
             session["user_id"] = user["id"]
             session["user_name"] = user["name"]
 
@@ -231,7 +267,6 @@ def login():
 # -------------------------
 @app.route("/logout")
 def logout():
-
     session.clear()
 
     flash("You have been logged out.", "success")
@@ -244,17 +279,14 @@ def logout():
 # -------------------------
 @app.route("/cart")
 def cart():
-
-    cart = session.get("cart", [])
+    cart_items = session.get("cart", [])
 
     conn = get_db()
 
     products = []
-
     total = 0
 
-    for product_id in cart:
-
+    for product_id in cart_items:
         product = conn.execute(
             "SELECT * FROM products WHERE id = ?",
             (product_id,)
@@ -278,12 +310,22 @@ def cart():
 # -------------------------
 @app.route("/add_to_cart/<int:product_id>")
 def add_to_cart(product_id):
+    conn = get_db()
 
-    cart = session.get("cart", [])
+    product = conn.execute(
+        "SELECT id FROM products WHERE id = ?",
+        (product_id,)
+    ).fetchone()
 
-    cart.append(product_id)
+    conn.close()
 
-    session["cart"] = cart
+    if not product:
+        flash("Product not found.", "error")
+        return redirect(url_for("products"))
+
+    cart_items = session.get("cart", [])
+    cart_items.append(product_id)
+    session["cart"] = cart_items
 
     flash("Product added to cart.", "success")
 
@@ -295,13 +337,12 @@ def add_to_cart(product_id):
 # -------------------------
 @app.route("/remove_from_cart/<int:product_id>")
 def remove_from_cart(product_id):
+    cart_items = session.get("cart", [])
 
-    cart = session.get("cart", [])
+    if product_id in cart_items:
+        cart_items.remove(product_id)
 
-    if product_id in cart:
-        cart.remove(product_id)
-
-    session["cart"] = cart
+    session["cart"] = cart_items
 
     return redirect(url_for("cart"))
 
@@ -311,42 +352,39 @@ def remove_from_cart(product_id):
 # -------------------------
 @app.route("/checkout", methods=["POST"])
 def checkout():
-
     if "user_id" not in session:
-
         flash("Please login before checking out.", "error")
-
         return redirect(url_for("login"))
 
-    cart = session.get("cart", [])
+    cart_items = session.get("cart", [])
 
-    if not cart:
-
+    if not cart_items:
         flash("Your cart is empty.", "error")
-
         return redirect(url_for("products"))
 
     conn = get_db()
 
-    total = 0
+    try:
+        total = 0
 
-    for product_id in cart:
+        for product_id in cart_items:
+            product = conn.execute(
+                "SELECT price FROM products WHERE id = ?",
+                (product_id,)
+            ).fetchone()
 
-        product = conn.execute(
-            "SELECT price FROM products WHERE id = ?",
-            (product_id,)
-        ).fetchone()
+            if product:
+                total += product["price"]
 
-        if product:
-            total += product["price"]
+        conn.execute("""
+            INSERT INTO orders (user_id, total)
+            VALUES (?, ?)
+        """, (session["user_id"], total))
 
-    conn.execute("""
-        INSERT INTO orders (user_id, total)
-        VALUES (?, ?)
-    """, (session["user_id"], total))
+        conn.commit()
 
-    conn.commit()
-    conn.close()
+    finally:
+        conn.close()
 
     session["cart"] = []
 
@@ -356,16 +394,92 @@ def checkout():
 
 
 # -------------------------
-# RUN APPLICATION
+# AI SHOPPING ASSISTANT
 # -------------------------
-if __name__ == "__main__":
-    init_db()
-    app.run(debug=True)
+
+@app.route("/ai-chat", methods=["POST"])
+def ai_chat():
+    if client is None:
+        app.logger.error("OPENAI_API_KEY is missing.")
+        return jsonify({
+            "error": "The AI API key is missing. Check your .env file."
+        }), 503
+
+    data = request.get_json(silent=True) or {}
+    question = data.get("message", "")
+
+    if not isinstance(question, str) or not question.strip():
+        return jsonify({
+            "error": "Please enter a message."
+        }), 400
+
+    question = question.strip()
+
+    if len(question) > 1000:
+        return jsonify({
+            "error": "Your message must be under 1000 characters."
+        }), 400
+
+    try:
+        response = client.responses.create(
+            model="gpt-4.1-mini",
+            instructions=(
+                "You are VoltMart's friendly customer-care assistant. "
+                "Help customers with electrical products and shopping. "
+                "Be clear, polite, and helpful. Do not invent prices, "
+                "stock levels, or order details. Recommend a qualified "
+                "electrician for electrical installation or repair work."
+            ),
+            input=question
+        )
+
+        answer = response.output_text
+
+        if not answer:
+            return jsonify({
+                "error": "The AI returned an empty answer. Please try again."
+            }), 502
+
+        return jsonify({"reply": answer})
+
+    except AuthenticationError:
+        app.logger.error(
+            "OpenAI authentication failed. Check OPENAI_API_KEY in .env."
+        )
+        return jsonify({
+            "error": "The AI API key is invalid. Check your .env configuration."
+        }), 401
+
+    except RateLimitError:
+        app.logger.exception("OpenAI API quota or rate limit error.")
+        return jsonify({
+            "error": "The AI service has a usage limit or quota issue."
+        }), 429
+
+    except APIConnectionError:
+        app.logger.exception("Could not connect to the OpenAI API.")
+        return jsonify({
+            "error": "Could not connect to the AI service. Please try again."
+        }), 502
+
+    except Exception:
+        app.logger.exception("VoltMart AI request failed.")
+        return jsonify({
+            "error": "The AI service encountered an error. Please try again."
+        }), 500
+
 # -------------------------
 # INITIALIZE DATABASE
 # -------------------------
 init_db()
 
+
+# -------------------------
+# CUSTOMER SERVICE PAGE
+# -------------------------
+@app.route("/customer-service")
+def customer_service():
+    return render_template("chat-box-ai.html")
 
 # -------------------------
 # RUN APPLICATION

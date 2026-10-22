@@ -30,7 +30,12 @@
 
         <a href="{{ url_for('products') }}">Products</a>
 
-        <a href="{{ url_for('cart') }}">🛒 Cart</a>
+        
+<a href="{{ url_for('cart') }}" class="cart-link">
+    🛒 Cart
+    <span class="cart-count">{{ cart_count }}</span>
+</a>
+
 
     </div>
 
