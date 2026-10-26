@@ -1,11 +1,17 @@
 
-from flask import (
-    Flask, render_template, request, redirect,
-    url_for, session, flash, jsonify
-)
 import sqlite3
 import os
+import logging
 from pathlib import Path
+from urllib.parse import urlencode
+
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from jinja2 import pass_context
+from starlette.concurrency import run_in_threadpool
+from starlette.middleware.sessions import SessionMiddleware
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from openai import OpenAI, AuthenticationError, RateLimitError, APIConnectionError
@@ -14,33 +20,99 @@ from openai import OpenAI, AuthenticationError, RateLimitError, APIConnectionErr
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
-app = Flask(__name__)
+logger = logging.getLogger("voltmart")
 
-@app.context_processor
-def cart_count():
-    cart = session.get("cart", [])
-    return {"cart_count": len(cart)}
+app = FastAPI(title="VoltMart")
 
-app.secret_key = os.getenv(
-    "FLASK_SECRET_KEY",
-    "dev-only-change-this-key"
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv(
+        "FLASK_SECRET_KEY",
+        "dev-only-change-this-key"
+    )
 )
+
+app.mount(
+    "/static",
+    StaticFiles(directory=BASE_DIR / "static"),
+    name="static"
+)
+
+templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 DATABASE = str(BASE_DIR / "store.db")
 
+# -------------------------
+# AI CLIENT
+# -------------------------
 # Create the AI client only when a key is configured
 api_key = os.getenv("OPENAI_API_KEY", "").strip()
 
 client = OpenAI(api_key=api_key) if api_key else None
 
+
 # -------------------------
-# AI CLIENT
+# TEMPLATE HELPERS
 # -------------------------
-client = (
-    OpenAI()
-    if os.getenv("OPENAI_API_KEY")
-    else None
-)
+# The templates were written for Flask, so these helpers give them the
+# same url_for, session and get_flashed_messages they already use.
+@pass_context
+def url_for(context, name, **params):
+    request = context["request"]
+
+    if name == "static":
+        return str(request.url_for("static", path=params.pop("filename")))
+
+    route = next(
+        r for r in request.app.routes if getattr(r, "name", None) == name
+    )
+    path_params = {
+        key: params.pop(key) for key in list(params)
+        if key in route.param_convertors
+    }
+
+    url = str(request.url_for(name, **path_params))
+
+    if params:
+        url += "?" + urlencode(params)
+
+    return url
+
+
+@pass_context
+def get_flashed_messages(context, with_categories=False):
+    messages = context["request"].session.pop("_flashes", [])
+
+    if with_categories:
+        return [tuple(message) for message in messages]
+
+    return [message for _, message in messages]
+
+
+templates.env.globals["url_for"] = url_for
+templates.env.globals["get_flashed_messages"] = get_flashed_messages
+
+
+def flash(request, message, category="message"):
+    flashes = request.session.get("_flashes", [])
+    flashes.append([category, message])
+    request.session["_flashes"] = flashes
+
+
+def render(request, template, **context):
+    return templates.TemplateResponse(
+        request,
+        template,
+        {
+            "session": request.session,
+            "cart_count": len(request.session.get("cart", [])),
+            **context
+        }
+    )
+
+
+def redirect(url):
+    return RedirectResponse(url, status_code=303)
 
 
 # -------------------------
@@ -152,8 +224,8 @@ def init_db():
 # -------------------------
 # HOME PAGE
 # -------------------------
-@app.route("/")
-def home():
+@app.get("/", response_class=HTMLResponse, name="home")
+def home(request: Request):
     conn = get_db()
 
     products = conn.execute(
@@ -162,16 +234,14 @@ def home():
 
     conn.close()
 
-    return render_template("index.html", products=products)
+    return render(request, "index.html", products=products)
 
 
 # -------------------------
 # PRODUCTS PAGE
 # -------------------------
-@app.route("/products")
-def products():
-    category = request.args.get("category")
-
+@app.get("/products", response_class=HTMLResponse, name="products")
+def products(request: Request, category: str | None = None):
     conn = get_db()
 
     if category:
@@ -186,7 +256,8 @@ def products():
 
     conn.close()
 
-    return render_template(
+    return render(
+        request,
         "products.html",
         products=products,
         selected_category=category
@@ -196,90 +267,101 @@ def products():
 # -------------------------
 # REGISTER
 # -------------------------
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        name = request.form["name"]
-        email = request.form["email"]
-        password = request.form["password"]
+@app.get("/register", response_class=HTMLResponse, name="register")
+def register_page(request: Request):
+    return render(request, "register.html")
 
-        hashed_password = generate_password_hash(password)
 
-        conn = get_db()
+@app.post("/register", response_class=HTMLResponse)
+def register(
+    request: Request,
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...)
+):
+    hashed_password = generate_password_hash(password)
 
-        try:
-            conn.execute("""
-                INSERT INTO users (name, email, password)
-                VALUES (?, ?, ?)
-            """, (name, email, hashed_password))
+    conn = get_db()
 
-            conn.commit()
+    try:
+        conn.execute("""
+            INSERT INTO users (name, email, password)
+            VALUES (?, ?, ?)
+        """, (name, email, hashed_password))
 
-            flash(
-                "Account created successfully. You can now login.",
-                "success"
-            )
+        conn.commit()
 
-            return redirect(url_for("login"))
+        flash(
+            request,
+            "Account created successfully. You can now login.",
+            "success"
+        )
 
-        except sqlite3.IntegrityError:
-            flash("Email already exists.", "error")
+        return redirect(request.url_for("login"))
 
-        finally:
-            conn.close()
+    except sqlite3.IntegrityError:
+        flash(request, "Email already exists.", "error")
 
-    return render_template("register.html")
+    finally:
+        conn.close()
+
+    return render(request, "register.html")
 
 
 # -------------------------
 # LOGIN
 # -------------------------
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        email = request.form["email"]
-        password = request.form["password"]
+@app.get("/login", response_class=HTMLResponse, name="login")
+def login_page(request: Request):
+    return render(request, "login.html")
 
-        conn = get_db()
 
-        user = conn.execute(
-            "SELECT * FROM users WHERE email = ?",
-            (email,)
-        ).fetchone()
+@app.post("/login", response_class=HTMLResponse)
+def login(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...)
+):
+    conn = get_db()
 
-        conn.close()
+    user = conn.execute(
+        "SELECT * FROM users WHERE email = ?",
+        (email,)
+    ).fetchone()
 
-        if user and check_password_hash(user["password"], password):
-            session["user_id"] = user["id"]
-            session["user_name"] = user["name"]
+    conn.close()
 
-            flash("Welcome back!", "success")
+    if user and check_password_hash(user["password"], password):
+        request.session["user_id"] = user["id"]
+        request.session["user_name"] = user["name"]
 
-            return redirect(url_for("home"))
+        flash(request, "Welcome back!", "success")
 
-        flash("Invalid email or password.", "error")
+        return redirect(request.url_for("home"))
 
-    return render_template("login.html")
+    flash(request, "Invalid email or password.", "error")
+
+    return render(request, "login.html")
 
 
 # -------------------------
 # LOGOUT
 # -------------------------
-@app.route("/logout")
-def logout():
-    session.clear()
+@app.get("/logout", name="logout")
+def logout(request: Request):
+    request.session.clear()
 
-    flash("You have been logged out.", "success")
+    flash(request, "You have been logged out.", "success")
 
-    return redirect(url_for("home"))
+    return redirect(request.url_for("home"))
 
 
 # -------------------------
 # CART
 # -------------------------
-@app.route("/cart")
-def cart():
-    cart_items = session.get("cart", [])
+@app.get("/cart", response_class=HTMLResponse, name="cart")
+def cart(request: Request):
+    cart_items = request.session.get("cart", [])
 
     conn = get_db()
 
@@ -298,7 +380,8 @@ def cart():
 
     conn.close()
 
-    return render_template(
+    return render(
+        request,
         "cart.html",
         products=products,
         total=total
@@ -308,8 +391,8 @@ def cart():
 # -------------------------
 # ADD TO CART
 # -------------------------
-@app.route("/add_to_cart/<int:product_id>")
-def add_to_cart(product_id):
+@app.get("/add_to_cart/{product_id}", name="add_to_cart")
+def add_to_cart(request: Request, product_id: int):
     conn = get_db()
 
     product = conn.execute(
@@ -320,47 +403,49 @@ def add_to_cart(product_id):
     conn.close()
 
     if not product:
-        flash("Product not found.", "error")
-        return redirect(url_for("products"))
+        flash(request, "Product not found.", "error")
+        return redirect(request.url_for("products"))
 
-    cart_items = session.get("cart", [])
+    cart_items = request.session.get("cart", [])
     cart_items.append(product_id)
-    session["cart"] = cart_items
+    request.session["cart"] = cart_items
 
-    flash("Product added to cart.", "success")
+    flash(request, "Product added to cart.", "success")
 
-    return redirect(request.referrer or url_for("products"))
+    return redirect(
+        request.headers.get("referer") or request.url_for("products")
+    )
 
 
 # -------------------------
 # REMOVE FROM CART
 # -------------------------
-@app.route("/remove_from_cart/<int:product_id>")
-def remove_from_cart(product_id):
-    cart_items = session.get("cart", [])
+@app.get("/remove_from_cart/{product_id}", name="remove_from_cart")
+def remove_from_cart(request: Request, product_id: int):
+    cart_items = request.session.get("cart", [])
 
     if product_id in cart_items:
         cart_items.remove(product_id)
 
-    session["cart"] = cart_items
+    request.session["cart"] = cart_items
 
-    return redirect(url_for("cart"))
+    return redirect(request.url_for("cart"))
 
 
 # -------------------------
 # CHECKOUT
 # -------------------------
-@app.route("/checkout", methods=["POST"])
-def checkout():
-    if "user_id" not in session:
-        flash("Please login before checking out.", "error")
-        return redirect(url_for("login"))
+@app.post("/checkout", name="checkout")
+def checkout(request: Request):
+    if "user_id" not in request.session:
+        flash(request, "Please login before checking out.", "error")
+        return redirect(request.url_for("login"))
 
-    cart_items = session.get("cart", [])
+    cart_items = request.session.get("cart", [])
 
     if not cart_items:
-        flash("Your cart is empty.", "error")
-        return redirect(url_for("products"))
+        flash(request, "Your cart is empty.", "error")
+        return redirect(request.url_for("products"))
 
     conn = get_db()
 
@@ -379,49 +464,56 @@ def checkout():
         conn.execute("""
             INSERT INTO orders (user_id, total)
             VALUES (?, ?)
-        """, (session["user_id"], total))
+        """, (request.session["user_id"], total))
 
         conn.commit()
 
     finally:
         conn.close()
 
-    session["cart"] = []
+    request.session["cart"] = []
 
-    flash("Order placed successfully!", "success")
+    flash(request, "Order placed successfully!", "success")
 
-    return redirect(url_for("home"))
+    return redirect(request.url_for("home"))
 
 
 # -------------------------
 # AI SHOPPING ASSISTANT
 # -------------------------
+def error(message, status_code):
+    return JSONResponse({"error": message}, status_code=status_code)
 
-@app.route("/ai-chat", methods=["POST"])
-def ai_chat():
+
+@app.post("/ai-chat", name="ai_chat")
+async def ai_chat(request: Request):
     if client is None:
-        app.logger.error("OPENAI_API_KEY is missing.")
-        return jsonify({
-            "error": "The AI API key is missing. Check your .env file."
-        }), 503
+        logger.error("OPENAI_API_KEY is missing.")
+        return error(
+            "The AI API key is missing. Check your .env file.", 503
+        )
 
-    data = request.get_json(silent=True) or {}
+    try:
+        data = await request.json()
+    except ValueError:
+        data = None
+
+    if not isinstance(data, dict):
+        data = {}
+
     question = data.get("message", "")
 
     if not isinstance(question, str) or not question.strip():
-        return jsonify({
-            "error": "Please enter a message."
-        }), 400
+        return error("Please enter a message.", 400)
 
     question = question.strip()
 
     if len(question) > 1000:
-        return jsonify({
-            "error": "Your message must be under 1000 characters."
-        }), 400
+        return error("Your message must be under 1000 characters.", 400)
 
     try:
-        response = client.responses.create(
+        response = await run_in_threadpool(
+            client.responses.create,
             model="gpt-4.1-mini",
             instructions=(
                 "You are VoltMart's friendly customer-care assistant. "
@@ -436,37 +528,50 @@ def ai_chat():
         answer = response.output_text
 
         if not answer:
-            return jsonify({
-                "error": "The AI returned an empty answer. Please try again."
-            }), 502
+            return error(
+                "The AI returned an empty answer. Please try again.", 502
+            )
 
-        return jsonify({"reply": answer})
+        return {"reply": answer}
 
     except AuthenticationError:
-        app.logger.error(
+        logger.error(
             "OpenAI authentication failed. Check OPENAI_API_KEY in .env."
         )
-        return jsonify({
-            "error": "The AI API key is invalid. Check your .env configuration."
-        }), 401
+        return error(
+            "The AI API key is invalid. Check your .env configuration.", 401
+        )
 
     except RateLimitError:
-        app.logger.exception("OpenAI API quota or rate limit error.")
-        return jsonify({
-            "error": "The AI service has a usage limit or quota issue."
-        }), 429
+        logger.exception("OpenAI API quota or rate limit error.")
+        return error(
+            "The AI service has a usage limit or quota issue.", 429
+        )
 
     except APIConnectionError:
-        app.logger.exception("Could not connect to the OpenAI API.")
-        return jsonify({
-            "error": "Could not connect to the AI service. Please try again."
-        }), 502
+        logger.exception("Could not connect to the OpenAI API.")
+        return error(
+            "Could not connect to the AI service. Please try again.", 502
+        )
 
     except Exception:
-        app.logger.exception("VoltMart AI request failed.")
-        return jsonify({
-            "error": "The AI service encountered an error. Please try again."
-        }), 500
+        logger.exception("VoltMart AI request failed.")
+        return error(
+            "The AI service encountered an error. Please try again.", 500
+        )
+
+
+# -------------------------
+# CUSTOMER SERVICE PAGE
+# -------------------------
+@app.get(
+    "/customer-service",
+    response_class=HTMLResponse,
+    name="customer_service"
+)
+def customer_service(request: Request):
+    return render(request, "chat-box-ai.html")
+
 
 # -------------------------
 # INITIALIZE DATABASE
@@ -475,14 +580,9 @@ init_db()
 
 
 # -------------------------
-# CUSTOMER SERVICE PAGE
-# -------------------------
-@app.route("/customer-service")
-def customer_service():
-    return render_template("chat-box-ai.html")
-
-# -------------------------
 # RUN APPLICATION
 # -------------------------
 if __name__ == "__main__":
-    app.run(debug=True)
+    import uvicorn
+
+    uvicorn.run("app:app", reload=True)
